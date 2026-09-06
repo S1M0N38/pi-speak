@@ -217,7 +217,7 @@ export function createPiSpeakRuntime(
       } catch {}
       if (hasUI) {
         if (visualizer) {
-          visualizer.showSynthesisStatus(ctx, "Synthesizing…");
+          visualizer.showSynthesisStatus(ctx, "Synthesizing…", { spinner: true });
         } else {
           ctx.ui.setWidget(STATUS_WIDGET_KEY, [ctx.ui.theme.fg("muted", "Synthesizing…")]);
         }
