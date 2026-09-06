@@ -1,6 +1,10 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { CATALOG_MODELS, formatBinarySize } from "./catalog.js";
-import { downloadCatalogModel, findCachedCatalogModel } from "./models.js";
+import {
+  downloadCatalogModel,
+  findCachedCatalogModel,
+  findIncompleteDownload,
+} from "./models.js";
 import { settingsForModel, writeSettings, type PiSpeakSettings } from "./settings.js";
 import { STATUS_WIDGET_KEY } from "./shortcut-core.js";
 
@@ -46,8 +50,11 @@ export async function runModelSelection(
     if (models.length > 1) {
       const choices = models.map((model) => {
         const cached = findCachedCatalogModel(model);
-        const mark = cached ? " ✓" : "";
-        return `${model.name} (${formatBinarySize(model.size)})${mark}`;
+        if (cached) return `${model.name} (${formatBinarySize(model.size)}) ✓`;
+        const partial = findIncompleteDownload(model);
+        const resume =
+          partial !== undefined ? ` · ↻ ${formatBinarySize(partial.bytes)} downloaded` : "";
+        return `${model.name} (${formatBinarySize(model.size)})${resume}`;
       });
       const choice = await ctx.ui.select("Choose a model", choices);
       if (!choice) {
