@@ -7,3 +7,4 @@ AGENTS.md
 node_modules
 CONTEXT.md
 docs/adr
+tmp/
