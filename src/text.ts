@@ -21,44 +21,10 @@ export const SPEED_VALUES = [
   "3.0",
 ] as const;
 
-export function speedToIndex(speed: number): number {
-  const idx = SPEED_VALUES.findIndex((s) => Number.parseFloat(s) === speed);
-  return idx >= 0 ? idx : 0;
-}
-
-/** Human-readable "(language gender)" hint for a Kokoro voice id like af_heart. */
-export function voiceHint(name: string): string {
-  const langMap: Record<string, string> = {
-    a: "American",
-    b: "British",
-    j: "Japanese",
-    z: "Mandarin",
-    e: "Spanish",
-    f: "French",
-    h: "Hindi",
-    i: "Italian",
-    p: "Brazilian",
-  };
-  const genderMap: Record<string, string> = { f: "female", m: "male" };
-  const lang = langMap[name[0] ?? ""] ?? "";
-  const gender = genderMap[name[1] ?? ""] ?? "";
-  if (lang && gender) return `${lang} ${gender}`;
-  if (gender) return gender;
-  return lang;
-}
-
-export function extractTextContent(content: unknown[] | undefined): string {
-  if (!content) return "";
-  return (content as Array<{ type: string; text?: string }>)
-    .filter((c): c is { type: "text"; text: string } => c.type === "text")
-    .map((c) => c.text)
-    .join("\n");
-}
-
 /**
  * Strip markdown syntax so the synthesizer speaks words, not symbols.
- * Fenced code blocks are dropped entirely (spoken code is noise); inline
- * code keeps its text; links/images keep their label/alt.
+ * Fenced code blocks are dropped entirely; inline code keeps its text;
+ * links/images keep their label/alt.
  */
 export function cleanTextForSpeech(text: string): string {
   return text
@@ -66,9 +32,9 @@ export function cleanTextForSpeech(text: string): string {
     .replace(/`([^`]+)`/g, "$1")
     .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
-    .replace(/^\s{0,3}#{1,6}\s+/gm, "")
-    .replace(/^\s*>\s?/gm, "")
-    .replace(/^\s*(?:[-*+]|\d+\.)\s+/gm, "")
+    .replace(/^[ \t]{0,3}#{1,6}[ \t]+/gm, "")
+    .replace(/^[ \t]*>[ \t]?/gm, "")
+    .replace(/^[ \t]*(?:[-*+]|\d+\.)[ \t]+/gm, "")
     .replace(/(^|[\s([{])\*\*\*([^*\n]+?)\*\*\*(?=$|[\s.,!?;:)}\]])/g, "$1$2")
     .replace(/(^|[\s([{])\*\*([^*\n]+?)\*\*(?=$|[\s.,!?;:)}\]])/g, "$1$2")
     .replace(/(^|[\s([{])\*([^*\n]+?)\*(?=$|[\s.,!?;:)}\]])/g, "$1$2")
@@ -76,8 +42,41 @@ export function cleanTextForSpeech(text: string): string {
     .replace(/(^|[\s([{])__([^_\n]+?)__(?=$|[\s.,!?;:)}\]])/g, "$1$2")
     .replace(/(^|[\s([{])_([^_\n]+?)_(?=$|[\s.,!?;:)}\]])/g, "$1$2")
     .replace(/~~([^~]+)~~/g, "$1")
-    .replace(/^\s*(?:[-*_]\s*){3,}$/gm, "")
+    .replace(/^[ \t]*(?:[-*_][ \t]*){3,}$/gm, "")
     .replace(/[ \t]{2,}/g, " ")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+/**
+ * Kokoro truncates input around 510 tokens, so split cleaned text into
+ * sentence-sized chunks. Each chunk stays under `maxChars` when possible.
+ */
+export function splitTextForSpeech(text: string, maxChars = 240): string[] {
+  const sentences = text
+    .split(/\n+|(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+  const chunks: string[] = [];
+  let current = "";
+
+  const push = (piece: string): void => {
+    if (current.length > 0 && current.length + piece.length + 1 > maxChars) {
+      chunks.push(current);
+      current = piece;
+    } else {
+      current = current.length > 0 ? `${current} ${piece}` : piece;
+    }
+  };
+
+  for (const sentence of sentences) {
+    if (sentence.length <= maxChars) {
+      push(sentence);
+      continue;
+    }
+    for (const word of sentence.split(/\s+/)) push(word);
+  }
+
+  if (current.length > 0) chunks.push(current);
+  return chunks;
 }
