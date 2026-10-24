@@ -1,85 +1,55 @@
-import { existsSync, rmSync } from "node:fs";
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import { join } from "node:path";
+import type { KokoroTTS as KokoroModel } from "kokoro-js";
 
-export type SynthesisOptions = {
-  voice: string;
-  speed: number;
-  signal?: AbortSignal;
+const MODEL_ID = "onnx-community/Kokoro-82M-v1.0-ONNX";
+
+export type SynthesisBackend = {
+  load(onProgress?: (text: string) => void): Promise<void>;
+  synthesize(text: string, voice: string, speed: number): Promise<Float32Array>;
+  dispose(): Promise<void>;
 };
 
-export type SynthesisResult = {
-  audio: Float32Array;
-  sampling_rate: number;
-};
+/** Lazily loads kokoro-js and keeps the q4 model in the agent directory. */
+export class KokoroBackend implements SynthesisBackend {
+  private tts: KokoroModel | undefined;
 
-/** In-process Kokoro backend, mirrors pi-transcribe TranscribeCppBackend. */
-export class KokoroBackend {
-  private tts: { generate: (text: string, opts: { voice: string; speed: number }) => Promise<SynthesisResult>; model: { dispose: () => Promise<void> | void } } | undefined;
-  private loading: Promise<unknown> | undefined;
-  private disposed = false;
-
-  constructor(private readonly modelPath: string) {}
-
-  async prepare(): Promise<void> {
+  async load(onProgress?: (text: string) => void): Promise<void> {
     if (this.tts) return;
-    if (this.disposed) throw new Error("Synthesis backend has been disposed");
 
-    if (!this.loading) {
-      this.loading = (async () => {
-        const { KokoroTTS } = await import("kokoro-js");
-        const { env } = await import("@huggingface/transformers");
-        // Allow local models and keep default cache dir (HF hub cache is shared via HF_HUB_CACHE).
-        env.allowLocalModels = true;
-        try {
-          const tts = await KokoroTTS.from_pretrained("onnx-community/Kokoro-82M-v1.0-ONNX", {
-            dtype: "q4",
-            device: "cpu",
-          });
-          if (this.disposed) {
-            await tts.model.dispose();
-            throw new Error("Synthesis backend was disposed while loading");
-          }
-          this.tts = tts as unknown as typeof this.tts;
-          return tts;
-        } catch (error) {
-          try {
-            if (existsSync(this.modelPath)) rmSync(this.modelPath, { force: true });
-          } catch {}
-          throw error;
-        }
-      })();
-    }
+    const [{ KokoroTTS }, { env }] = await Promise.all([
+      import("kokoro-js"),
+      import("@huggingface/transformers"),
+    ]);
+    env.cacheDir = join(getAgentDir(), "pi-speak-models");
 
-    try {
-      await this.loading;
-    } finally {
-      this.loading = undefined;
-    }
+    let lastPercent = -1;
+    this.tts = await KokoroTTS.from_pretrained(MODEL_ID, {
+      dtype: "q4",
+      device: "cpu",
+      progress_callback: (progress) => {
+        if (progress.status !== "progress" || !progress.file.endsWith(".onnx")) return;
+        const percent = Math.round(progress.progress);
+        if (percent === lastPercent) return;
+        lastPercent = percent;
+        onProgress?.(`Downloading Kokoro model… ${percent}%`);
+      },
+    });
   }
 
-  async synthesize(text: string, options: SynthesisOptions): Promise<Float32Array> {
-    options.signal?.throwIfAborted();
-    await this.prepare();
+  async synthesize(text: string, voice: string, speed: number): Promise<Float32Array> {
     const tts = this.tts;
-    if (!tts) throw new Error("Synthesis backend is not prepared");
-    options.signal?.throwIfAborted();
+    if (!tts) throw new Error("Kokoro model is not loaded");
     const result = await tts.generate(text, {
-      voice: options.voice,
-      speed: options.speed,
+      voice: voice as keyof KokoroModel["voices"],
+      speed,
     });
-    options.signal?.throwIfAborted();
     return result.audio as Float32Array;
   }
 
   async dispose(): Promise<void> {
-    this.disposed = true;
-    await this.loading?.catch(() => undefined);
     const tts = this.tts;
     this.tts = undefined;
-    if (tts) {
-      try {
-        await tts.model.dispose();
-      } catch {}
-    }
-    if (typeof global.gc === "function") global.gc();
+    await tts?.model.dispose();
   }
 }
