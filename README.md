@@ -12,28 +12,54 @@ pi install ssh://git@github.com/s1m0n38/pi-speak
 
 The extension registers:
 
-- `speak` tool that the agent can use to synthesize speech locally via Kokoro;
-- `/speak` for voice, speed, and model settings;
+- a `speak` tool the agent can call with text, and optional `voice`/`speed` overrides;
+- `/speak` for voice, speed, and preprocessing settings;
 - `Ctrl+Alt+X` to speak the last agent message.
 
-To develop or run it from a checkout:
+The first synthesis downloads the Kokoro q4 model (~305 MB) into
+`~/.pi/agent/pi-speak-models`. After that, audio is generated locally and never
+leaves the machine.
+
+## Preprocessing
+
+`Ctrl+Alt+X` can summarize the last agent message before speaking it. It is off
+by default. Run `/speak` and choose `Preprocessing` to enable it with the
+current chat model or a specific model.
+
+`~/.pi/agent/pi-speak.json` holds the settings:
+
+```json
+{
+  "voice": "af_heart",
+  "speed": 1,
+  "preprocessingEnabled": true,
+  "preprocessingModel": { "provider": "openai", "id": "gpt-4o-mini" },
+  "preprocessingPrompt": "Summarize this for speech in one sentence."
+}
+```
+
+Omit `preprocessingModel` to use the active session model. Omit
+`preprocessingPrompt` to use the built-in summarization prompt.
+
+## Audio playback
+
+pi-speak uses the first available player:
+
+- macOS: `afplay`, `ffplay`, `mpv`
+- Linux: `pw-play`, `paplay`, `aplay`, `ffplay`, `mpv`
+- Windows: `ffplay`, PowerShell `SoundPlayer`
+
+It searches `PATH` and common system locations, including Nix profiles. If no
+player is found, the error is shown in Pi instead of failing silently.
+
+## Development
 
 ```bash
 npm install --ignore-scripts
 pi -e /absolute/path/to/pi-speak
 ```
 
-While iterating on setup, enable the debug-only onboarding command when starting Pi:
-
-```bash
-PI_SPEAK_DEBUG=1 pi -e /absolute/path/to/pi-speak
-```
-
-Then run `/speak-onboarding` to replay the complete onboarding flow. The command is not registered unless `PI_SPEAK_DEBUG=1`.
-
-## Development
-
 ```bash
 npm run check   # tsc --noEmit
-npm test        # check + node scripts/run-tests.mjs
+npm test        # check + compile tests + node --test
 ```
