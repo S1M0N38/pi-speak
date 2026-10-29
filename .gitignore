@@ -1,10 +1,9 @@
 .repos/
 skills-lock.json
-docs/agents
+docs/
 .agents/skills
 AGENTS.md
 .scratch
 node_modules
 CONTEXT.md
-docs/adr
 tmp/
