@@ -15,7 +15,8 @@
   "private": true,
   "files": [
     "index.ts",
-    "src",
+    "speak.ts",
+    "players.ts",
     "README.md",
     "LICENSE"
   ],
@@ -24,15 +25,18 @@
     "pi-extension",
     "tts",
     "text-to-speech",
-    "kokoro"
+    "ptts"
   ],
+  "exports": {
+    ".": "./index.ts",
+    "./speak": "./speak.ts"
+  },
   "engines": {
-    "node": ">=22"
+    "node": ">=22.6"
   },
   "scripts": {
     "check": "tsc --noEmit",
-    "test": "npm run check && node scripts/run-tests.mjs",
-    "prepublishOnly": "npm test"
+    "test": "npm run check && node --experimental-strip-types --test test/speak.test.ts"
   },
   "pi": {
     "extensions": [
@@ -48,9 +52,5 @@
     "@types/node": "22.20.1",
     "typebox": "1.3.27",
     "typescript": "5.9.3"
-  },
-  "dependencies": {
-    "@huggingface/transformers": "3.8.1",
-    "kokoro-js": "1.2.1"
   }
 }
